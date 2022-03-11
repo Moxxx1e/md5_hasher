@@ -15,6 +15,7 @@ import (
 
 const (
 	defaultGoroutinesNumber = 10
+	chanBufSize             = 10
 	parallelFlagName        = "parallel"
 	httpScheme              = "http://"
 )
@@ -64,7 +65,7 @@ func New(h hasher, g getter, l logger) *SiteHasher {
 func (s *SiteHasher) GetResponsesHashes(rawLinks []string, goroutinesNumber int) map[string]string {
 	wg := sync.WaitGroup{}
 
-	linksChan := make(chan string)
+	linksChan := make(chan string, chanBufSize)
 	result := make(map[string]string, len(rawLinks))
 	mu := sync.Mutex{}
 
