@@ -15,8 +15,10 @@ import (
 
 const (
 	defaultGoroutinesNumber = 10
+	chanBufSize             = 10
 	parallelFlagName        = "parallel"
 	httpScheme              = "http://"
+	errPrefix               = "ERROR: "
 )
 
 func main() {
@@ -29,10 +31,10 @@ func main() {
 		return
 	}
 
-	logger := log.New(os.Stderr, "ERROR: ", log.Ltime)
+	logger := log.New(os.Stderr, errPrefix, log.Ltime)
 
 	sh := New(&Hasher{}, &Getter{}, logger)
-	result := sh.GetResponsesHashes(links, int(goroutinesNumber))
+	result := sh.GetResponseHashes(links, int(goroutinesNumber))
 
 	for link, hash := range result {
 		fmt.Println(link, hash)
@@ -61,10 +63,10 @@ func New(h hasher, g getter, l logger) *SiteHasher {
 	}
 }
 
-func (s *SiteHasher) GetResponsesHashes(rawLinks []string, goroutinesNumber int) map[string]string {
+func (s *SiteHasher) GetResponseHashes(rawLinks []string, goroutinesNumber int) map[string]string {
 	wg := sync.WaitGroup{}
 
-	linksChan := make(chan string)
+	linksChan := make(chan string, chanBufSize)
 	result := make(map[string]string, len(rawLinks))
 	mu := sync.Mutex{}
 
@@ -73,9 +75,7 @@ func (s *SiteHasher) GetResponsesHashes(rawLinks []string, goroutinesNumber int)
 		for _, rawLink := range rawLinks {
 			link, err := validateLink(rawLink)
 			if err != nil {
-				if s.logger != nil {
-					s.logger.Println(err)
-				}
+				s.logger.Println(err)
 				continue
 			}
 			linksChan <- link
@@ -91,16 +91,13 @@ func (s *SiteHasher) GetResponsesHashes(rawLinks []string, goroutinesNumber int)
 			for link := range linksChan {
 				body, err := s.getter.Get(link)
 				if err != nil {
-					if s.logger != nil {
-						s.logger.Println(err)
-					}
+					s.logger.Println(err)
 					continue
 				}
 
-				hash := s.hasher.Sum(body)
 				// Could use sync.map instead
 				mu.Lock()
-				result[link] = hash
+				result[link] = s.hasher.Sum(body)
 				mu.Unlock()
 			}
 		}()

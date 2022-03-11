@@ -71,9 +71,9 @@ func Test(t *testing.T) {
 	t.Parallel()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			lh := New(hasherStub{}, getterStub{}, nil)
+			lh := New(hasherStub{}, getterStub{}, loggerStub{})
 
-			result := lh.GetResponsesHashes(test.rawLinks, test.concurrency)
+			result := lh.GetResponseHashes(test.rawLinks, test.concurrency)
 
 			isResultEqual := reflect.DeepEqual(result, test.resultMap)
 			if !isResultEqual {
@@ -109,4 +109,10 @@ func (g getterStub) Get(link string) ([]byte, error) {
 	default:
 		return nil, nil
 	}
+}
+
+type loggerStub struct{}
+
+func (l loggerStub) Println(v ...interface{}) {
+	return
 }
