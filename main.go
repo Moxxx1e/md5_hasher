@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"flag"
@@ -83,26 +84,56 @@ func (s *SiteHasher) GetResponsesHashes(rawLinks []string, goroutinesNumber int)
 		}
 	}()
 
+	var dontNeedMoreGoroutines bool
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	for i := 0; i < goroutinesNumber; i++ {
+		select {
+		case <-ctx.Done():
+			dontNeedMoreGoroutines = true
+			break
+		default:
+		}
+		if dontNeedMoreGoroutines {
+			break
+		}
+
 		wg.Add(1)
 
 		go func() {
 			defer wg.Done()
 
-			for link := range linksChan {
-				body, err := s.getter.Get(link)
-				if err != nil {
-					if s.logger != nil {
-						s.logger.Println(err)
-					}
-					continue
-				}
+			for {
+				var (
+					link string
+					more bool
+				)
 
-				hash := s.hasher.Sum(body)
-				// Could use sync.map instead
-				mu.Lock()
-				result[link] = hash
-				mu.Unlock()
+				select {
+				case link, more = <-linksChan:
+					if !more {
+						cancel()
+					}
+					if link == "" {
+						break
+					}
+					body, err := s.getter.Get(link)
+					if err != nil {
+						if s.logger != nil {
+							s.logger.Println(err)
+						}
+						break
+					}
+
+					hash := s.hasher.Sum(body)
+					// Could use sync.map instead
+					mu.Lock()
+					result[link] = hash
+					mu.Unlock()
+				}
+				if !more {
+					break
+				}
 			}
 		}()
 	}
